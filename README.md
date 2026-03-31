@@ -1,4 +1,4 @@
-# MindBridge — Mental Health Ecosystem
+# SAHARA — Mental Health Ecosystem
 
 A stepped-care mental health platform built with React, Express, and MongoDB Atlas.
 
