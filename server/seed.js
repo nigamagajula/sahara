@@ -136,8 +136,16 @@ const demoUsers = [
 ];
 
 // ─── Main seed ────────────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGO_URI).then(async () => {
-  console.log('✅ Connected to MongoDB. Starting seed...\n');
+const rawMongoUri = process.env.MONGO_URI;
+const isPlaceholder = !rawMongoUri || rawMongoUri.includes('<username>') || rawMongoUri.includes('<password>');
+const mongoUri = isPlaceholder ? 'mongodb://127.0.0.1:27017/sahara' : rawMongoUri;
+
+if (isPlaceholder) {
+  console.log('ℹ️  No custom MONGO_URI in server/.env, using default local MongoDB: mongodb://127.0.0.1:27017/sahara');
+}
+
+mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 }).then(async () => {
+  console.log(`✅ Connected to MongoDB (${mongoose.connection.name}). Starting seed...\n`);
 
   // 1. Wipe everything
   await Promise.all([
@@ -214,4 +222,11 @@ mongoose.connect(process.env.MONGO_URI).then(async () => {
   console.log('─────────────────────────────────────────\n');
 
   process.exit(0);
-}).catch(err => { console.error(err); process.exit(1); });
+}).catch(err => {
+  console.error('\n❌ Could not connect to MongoDB:', err.message);
+  console.error('\nTo seed the database, please make sure MongoDB is running and reachable:');
+  console.error('  1. Option A (Local): brew services start mongodb-community');
+  console.error('  2. Option B (Cloud): In server/.env set:');
+  console.error('     MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/sahara?retryWrites=true&w=majority\n');
+  process.exit(1);
+});

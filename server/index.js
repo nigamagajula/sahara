@@ -23,6 +23,29 @@ const io     = new Server(server, {
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  const isConnected = mongoose.connection.readyState === 1;
+  res.json({
+    status: 'ok',
+    database: isConnected ? 'connected' : 'disconnected',
+    dbName: mongoose.connection.name || null
+  });
+});
+
+// Guard API routes: fail fast if MongoDB is disconnected rather than timing out
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database unavailable',
+      message: 'MongoDB is not connected. Please verify MONGO_URI in server/.env or start MongoDB.',
+      status: 'disconnected'
+    });
+  }
+  next();
+});
+
 // ── REST routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth',       require('./routes/auth'));
 app.use('/api/vents',      require('./routes/vents'));
@@ -138,9 +161,56 @@ io.on('connection', (socket) => {
 app.set('io', io);
 
 // ── DB + Start ───────────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGO_URI).then(() => {
-  console.log('MongoDB connected');
-  server.listen(process.env.PORT || 5000, () =>
-    console.log(`Server running on port ${process.env.PORT || 5000}`)
-  );
-}).catch(err => console.error('DB error:', err));
+const PORT = process.env.PORT || 5001;
+const rawMongoUri = process.env.MONGO_URI;
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use.`);
+    if (Number(PORT) === 5000) {
+      console.error('   Note: macOS Control Center / AirPlay Receiver reserves port 5000 by default.');
+      console.error('   Switch to PORT=5001 in server/.env to resolve this.');
+    }
+  } else {
+    console.error('Server error:', err);
+  }
+});
+
+const isPlaceholder = !rawMongoUri || rawMongoUri.includes('<username>') || rawMongoUri.includes('<password>');
+
+async function connectDB() {
+  if (!isPlaceholder && rawMongoUri) {
+    try {
+      await mongoose.connect(rawMongoUri, { serverSelectionTimeoutMS: 5000 });
+      console.log(`✅ MongoDB connected successfully to: "${mongoose.connection.name}"`);
+      return true;
+    } catch (err) {
+      console.error('❌ Failed to connect to MONGO_URI:', err.message);
+    }
+  }
+
+  // Attempt local MongoDB fallback
+  try {
+    console.log('🔄 Checking local MongoDB connection (mongodb://127.0.0.1:27017/sahara)...');
+    await mongoose.connect('mongodb://127.0.0.1:27017/sahara', { serverSelectionTimeoutMS: 3000 });
+    console.log('✅ Connected to local MongoDB at mongodb://127.0.0.1:27017/sahara');
+    return true;
+  } catch {
+    console.warn('\n⚠️  [MongoDB] Not connected to any database.');
+    console.warn('   To connect MongoDB:');
+    console.warn('   1. Option A (Cloud): Put your MongoDB Atlas URI in server/.env:');
+    console.warn('      MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/sahara?retryWrites=true&w=majority');
+    console.warn('   2. Option B (Local): Start local MongoDB with:');
+    console.warn('      brew services start mongodb-community\n');
+    return false;
+  }
+}
+
+connectDB().then((connected) => {
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT} [DB: ${connected ? 'CONNECTED' : 'DISCONNECTED'}]`);
+  });
+});
+
+
+

@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 import { loginUser, registerUser } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
-const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const THERAPIST  = { name: 'Dr. Ananya', initials: 'DA', color: '#f43f5e' };
 
 function EmergencyChat({ onClose }) {
@@ -177,7 +177,7 @@ export default function AuthScreen() {
     setSuUsernameStatus('checking');
     usernameTimer = setTimeout(async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/auth/check-username/${val.toLowerCase()}`);
+        const res = await fetch(`${SOCKET_URL}/api/auth/check-username/${val.toLowerCase()}`);
         const data = await res.json();
         setSuUsernameStatus(data.available ? 'available' : 'taken');
       } catch { setSuUsernameStatus(''); }
